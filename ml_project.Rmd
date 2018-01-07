@@ -1,0 +1,125 @@
+---
+title: "ml_project"
+output: html_document
+---
+
+# Machine learning Project
+
+## Data
+
+data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways.
+
+## Goals
+
+The goal of this project is to predict the manner in which they did the exercise. This is the **classe** variable in the training set.
+
+### data
+
+1. load data and libraries
+
+```{r}
+train <- read.csv("./train.csv")
+validation <- read.csv("./test.csv")
+library(caret)
+library(ggplot2)
+library(parallel)
+library(doParallel)
+```
+
+2. partition data
+
+```{r}
+set.seed(369)
+inTrain <- createDataPartition(train$classe, p = .8, list = FALSE)
+training <- train[inTrain,]
+testing <- train[-inTrain,]
+```
+
+### preprocessing
+
+1. remove useless variables: vars that do not influence the reusult (the first 7)
+
+```{r}
+training <- training[,-c(1:7)]
+testing <- testing[,-c(1:7)]
+```
+
+2. remove zero covariates
+
+```{r}
+nsv <- nearZeroVar(training, saveMetrics = TRUE)
+x <- which(nsv$nzv == TRUE)
+training <- training[,-c(x)]
+testing <- testing[,-c(x)]
+```
+
+3. remove mostly Nas 
+
+```{r}
+mostNAs <- sapply(training, function(x) mean(is.na(x))) > 0.95
+training <- training[,mostNAs == FALSE]
+testing <- testing[,mostNAs == FALSE]
+```
+
+## test models
+
+### random forest
+
+1. configure parallel process
+
+```{r}
+cluster <- makeCluster(detectCores() - 1) # convention to leave 1 core for OS
+registerDoParallel(cluster)
+```
+
+2. create fit control
+
+```{r}
+fitControl <- trainControl(method="cv", number = 4, allowParallel = TRUE)
+```
+
+3. fit model
+
+```{r}
+fit1 <- train(classe ~., method = "rf",data = training,trControl = fitControl, preProcess = c("center", "scale"))
+```
+
+4. stop parallel processing
+
+```{r}
+stopCluster(cluster)
+registerDoSEQ()
+```
+
+5. check accuracy
+
+```{r}
+pred1 <- predict(fit1, testing)
+confusionMatrix(pred1, testing$classe)$overall[1]
+```
+
+### boosted trees
+
+1. fit model
+
+```{r}
+fit2 <- train(classe ~., method = "gbm",data = training,trControl = fitControl, preProcess = c("center", "scale"), verbose = FALSE)
+```
+
+2. check accuracy
+
+```{r}
+pred2 <- predict(fit2, testing)
+confusionMatrix(pred2, testing$classe)$overall[1]
+```
+
+the most accurate model is the first one: random forest
+
+
+## predict **classe** on test set
+
+```{r}
+predict(fit1, validation)
+```
+
+these are the associated classes to test data
